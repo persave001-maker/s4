@@ -20,32 +20,110 @@ workflows:
         script: |
           flutter create .
 
-      - name: Force supported Gradle and AGP versions
+      - name: Force supported Android Gradle files
         script: |
-          # Gradle wrapper: Flutter now asks for at least 8.14 soon, so use 8.14.3
-          if [ -f android/gradle/wrapper/gradle-wrapper.properties ]; then
-            sed -i '' 's/gradle-[0-9.]*-all.zip/gradle-8.14.3-all.zip/g' android/gradle/wrapper/gradle-wrapper.properties
-          fi
+          cat > android/gradle/wrapper/gradle-wrapper.properties <<'EOF'
+          distributionBase=GRADLE_USER_HOME
+          distributionPath=wrapper/dists
+          zipStoreBase=GRADLE_USER_HOME
+          zipStorePath=wrapper/dists
+          distributionUrl=https\://services.gradle.org/distributions/gradle-8.14.3-all.zip
+          EOF
 
-          # AGP in modern Flutter templates is usually in android/settings.gradle
-          if [ -f android/settings.gradle ]; then
-            sed -i '' 's/id "com.android.application" version "[^"]*"/id "com.android.application" version "8.6.1"/g' android/settings.gradle
-            sed -i '' "s/id 'com.android.application' version '[^']*'/id 'com.android.application' version '8.6.1'/g" android/settings.gradle
-          fi
+          cat > android/settings.gradle <<'EOF'
+          pluginManagement {
+              def flutterSdkPath = {
+                  def properties = new Properties()
+                  file("local.properties").withInputStream { properties.load(it) }
+                  def flutterSdkPath = properties.getProperty("flutter.sdk")
+                  assert flutterSdkPath != null, "flutter.sdk not set in local.properties"
+                  return flutterSdkPath
+              }()
 
-          # Older templates may define AGP in android/build.gradle
-          if [ -f android/build.gradle ]; then
-            sed -i '' 's/com.android.tools.build:gradle:[0-9.][0-9.]*/com.android.tools.build:gradle:8.6.1/g' android/build.gradle
-          fi
+              includeBuild("$flutterSdkPath/packages/flutter_tools/gradle")
 
-      - name: Show Android build versions
+              repositories {
+                  google()
+                  mavenCentral()
+                  gradlePluginPortal()
+              }
+          }
+
+          plugins {
+              id "dev.flutter.flutter-plugin-loader" version "1.0.0"
+              id "com.android.application" version "8.6.1" apply false
+              id "org.jetbrains.kotlin.android" version "1.9.24" apply false
+          }
+
+          include ":app"
+          EOF
+
+          cat > android/build.gradle <<'EOF'
+          allprojects {
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+          }
+
+          rootProject.buildDir = "../build"
+          subprojects {
+              project.buildDir = "${rootProject.buildDir}/${project.name}"
+          }
+
+          subprojects {
+              project.evaluationDependsOn(":app")
+          }
+
+          tasks.register("clean", Delete) {
+              delete rootProject.buildDir
+          }
+          EOF
+
+      - name: Force app build.gradle
         script: |
-          echo "---- gradle-wrapper.properties ----"
-          cat android/gradle/wrapper/gradle-wrapper.properties || true
-          echo "---- settings.gradle AGP line ----"
-          grep -n "com.android.application" android/settings.gradle || true
-          echo "---- build.gradle AGP line ----"
-          grep -n "com.android.tools.build:gradle" android/build.gradle || true
+          cat > android/app/build.gradle <<'EOF'
+          plugins {
+              id "com.android.application"
+              id "kotlin-android"
+              id "dev.flutter.flutter-gradle-plugin"
+          }
+
+          android {
+              namespace "com.example.supermarket"
+              compileSdkVersion flutter.compileSdkVersion
+
+              compileOptions {
+                  sourceCompatibility JavaVersion.VERSION_1_8
+                  targetCompatibility JavaVersion.VERSION_1_8
+              }
+
+              kotlinOptions {
+                  jvmTarget = "1.8"
+              }
+
+              defaultConfig {
+                  applicationId "com.example.supermarket"
+                  minSdkVersion flutter.minSdkVersion
+                  targetSdkVersion flutter.targetSdkVersion
+                  versionCode flutter.versionCode
+                  versionName flutter.versionName
+              }
+          }
+
+          flutter {
+              source "../.."
+          }
+          EOF
+
+      - name: Print versions
+        script: |
+          echo "=== gradle wrapper ==="
+          cat android/gradle/wrapper/gradle-wrapper.properties
+          echo "=== settings.gradle ==="
+          cat android/settings.gradle
+          echo "=== app/build.gradle ==="
+          cat android/app/build.gradle
 
       - name: Build Android APK
         script: |
