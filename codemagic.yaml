@@ -5,19 +5,25 @@ workflows:
     instance_type: mac_mini_m1
 
     scripts:
-      - name: Clean old files
+      - name: Clean Flutter
         script: |
           flutter clean
-
-      - name: Re-create Android folder (FIX FOR ALL GRADLE/KOTLIN ERRORS)
-        script: |
-          flutter create .
 
       - name: Get packages
         script: |
           flutter pub get
 
-      - name: Build APK
+      - name: Recreate Android project
+        script: |
+          flutter create .
+
+      - name: Force Gradle wrapper to supported version
+        script: |
+          if [ -f android/gradle/wrapper/gradle-wrapper.properties ]; then
+            sed -i '' 's/gradle-[0-9.]*-all.zip/gradle-8.7-all.zip/g' android/gradle/wrapper/gradle-wrapper.properties
+          fi
+
+      - name: Build Android APK
         script: |
           flutter build apk --debug
 
