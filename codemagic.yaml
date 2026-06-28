@@ -4,6 +4,9 @@ workflows:
     max_build_duration: 60
     instance_type: mac_mini_m1
 
+    environment:
+      flutter: stable
+
     scripts:
       - name: Clean Flutter
         script: |
@@ -17,11 +20,32 @@ workflows:
         script: |
           flutter create .
 
-      - name: Force Gradle wrapper to supported version
+      - name: Force supported Gradle and AGP versions
         script: |
+          # Gradle wrapper: Flutter now asks for at least 8.14 soon, so use 8.14.3
           if [ -f android/gradle/wrapper/gradle-wrapper.properties ]; then
-            sed -i '' 's/gradle-[0-9.]*-all.zip/gradle-8.7-all.zip/g' android/gradle/wrapper/gradle-wrapper.properties
+            sed -i '' 's/gradle-[0-9.]*-all.zip/gradle-8.14.3-all.zip/g' android/gradle/wrapper/gradle-wrapper.properties
           fi
+
+          # AGP in modern Flutter templates is usually in android/settings.gradle
+          if [ -f android/settings.gradle ]; then
+            sed -i '' 's/id "com.android.application" version "[^"]*"/id "com.android.application" version "8.6.1"/g' android/settings.gradle
+            sed -i '' "s/id 'com.android.application' version '[^']*'/id 'com.android.application' version '8.6.1'/g" android/settings.gradle
+          fi
+
+          # Older templates may define AGP in android/build.gradle
+          if [ -f android/build.gradle ]; then
+            sed -i '' 's/com.android.tools.build:gradle:[0-9.][0-9.]*/com.android.tools.build:gradle:8.6.1/g' android/build.gradle
+          fi
+
+      - name: Show Android build versions
+        script: |
+          echo "---- gradle-wrapper.properties ----"
+          cat android/gradle/wrapper/gradle-wrapper.properties || true
+          echo "---- settings.gradle AGP line ----"
+          grep -n "com.android.application" android/settings.gradle || true
+          echo "---- build.gradle AGP line ----"
+          grep -n "com.android.tools.build:gradle" android/build.gradle || true
 
       - name: Build Android APK
         script: |
